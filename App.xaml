@@ -17,6 +17,7 @@
         <converters:BoolToColorConverter x:Key="BoolToColorConverter"/>
         <converters:AnyItemConnectedConverter x:Key="AnyItemConnectedConverter"/>
         <converters:InverseBooleanConverter x:Key="InverseBooleanConverter"/>
+        <converters:NullToBoolConverter x:Key="NullToBoolConverter" />
     </ResourceDictionary>
 </Application.Resources>
 </Application>

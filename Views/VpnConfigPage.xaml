@@ -32,18 +32,25 @@
                         <DataTemplate>
                             <Frame>
                                 <Grid ColumnDefinitions="*,Auto,Auto" 
-                                      RowDefinitions="Auto,Auto"
-                                      RowSpacing="5">
+                                    RowDefinitions="Auto,Auto,Auto"
+                                    RowSpacing="5">
                                     
                                     <Label Grid.Column="0" Grid.Row="0"
-                                           Text="{Binding Remark}" 
-                                           FontAttributes="Bold"/>
+                                        Text="{Binding Remark}" 
+                                        FontAttributes="Bold"/>
                                     
                                     <Label Grid.Column="0" Grid.Row="1"
-                                           Text="{Binding Address}"
-                                           FontSize="Small"/>
+                                        Text="{Binding Address}"
+                                        FontSize="Small"/>
                                     
-                                    <Button Grid.Column="1" Grid.Row="0" Grid.RowSpan="2"
+                                    <!-- Добавляем Label для отображения ошибки -->
+                                    <Label Grid.Column="0" Grid.Row="2"
+                                        Text="{Binding LastError}"
+                                        FontSize="Small"
+                                        TextColor="{StaticResource Error}"
+                                        IsVisible="{Binding LastError, Converter={StaticResource NullToBoolConverter}}"/>
+                                    
+                                    <Button Grid.Column="1" Grid.Row="0" Grid.RowSpan="3"
                                             Text="{Binding IsConnected, Converter={StaticResource BoolToConnectTextConverter}}"
                                             BackgroundColor="{Binding IsConnected, Converter={StaticResource BoolToColorConverter}}"
                                             Command="{Binding BindingContext.ConnectCommand, Source={RelativeSource AncestorType={x:Type ContentPage}}}"
@@ -51,7 +58,7 @@
                                             WidthRequest="100"
                                             Margin="5,0"/>
                                     
-                                    <Button Grid.Column="2" Grid.Row="0" Grid.RowSpan="2"
+                                    <Button Grid.Column="2" Grid.Row="0" Grid.RowSpan="3"
                                             Text="Delete"
                                             BackgroundColor="{StaticResource Error}"
                                             Command="{Binding BindingContext.DeleteConfigCommand, Source={RelativeSource AncestorType={x:Type ContentPage}}}"

@@ -30,32 +30,48 @@ public class VlessVpnService : IVlessVpnService
             
             _tcpClient = new TcpClient();
             _cancellationTokenSource = new CancellationTokenSource();
+
+            var connectTask = _tcpClient.ConnectAsync(config.Address, config.Port);
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
             
-            // Connect to the server
-            await _tcpClient.ConnectAsync(config.Address, config.Port, _cancellationTokenSource.Token);
+            var completedTask = await Task.WhenAny(connectTask, timeoutTask);
+            if (completedTask == timeoutTask)
+            {
+                throw new TimeoutException("Connection timeout");
+            }
             
             if (!_tcpClient.Connected)
             {
-                OnConnectionStatusChanged("Connection failed");
-                return false;
+                throw new Exception("Connection failed without exception");
             }
 
             _networkStream = _tcpClient.GetStream();
-            
-            // Send VLESS protocol handshake (simplified version without encryption/TLS)
+
             await SendVlessHandshake(config);
             
             _isConnected = true;
             OnConnectionStatusChanged("Connected");
             
-            // Start reading responses in background
             _ = Task.Run(() => ReadDataAsync(_cancellationTokenSource.Token));
             
             return true;
         }
         catch (Exception ex)
         {
-            OnConnectionStatusChanged($"Connection error: {ex.Message}");
+            string errorMessage = ex switch
+            {
+                TimeoutException => "Connection timeout (server not responding)",
+                SocketException sockEx => sockEx.SocketErrorCode switch
+                {
+                    SocketError.ConnectionRefused => "Connection refused (server is down)",
+                    SocketError.HostUnreachable => "Host unreachable (check network)",
+                    SocketError.NetworkUnreachable => "Network unavailable",
+                    _ => $"Network error: {sockEx.SocketErrorCode}"
+                },
+                _ => $"Connection error: {ex.Message}"
+            };
+            
+            OnConnectionStatusChanged(errorMessage);
             Disconnect();
             return false;
         }
@@ -76,11 +92,16 @@ public class VlessVpnService : IVlessVpnService
             _tcpClient = null;
             
             _isConnected = false;
-            OnConnectionStatusChanged("Disconnected");
+            
+            // Не перезаписываем статус, если уже есть сообщение об ошибке
+            if (!_cancellationTokenSource?.IsCancellationRequested ?? false)
+            {
+                OnConnectionStatusChanged("Disconnected");
+            }
         }
         catch
         {
-            // Ignore disposal errors
+            // Игонорируем ошибки
         }
     }
 
@@ -91,11 +112,9 @@ public class VlessVpnService : IVlessVpnService
             1
         };
         
-        // Add UUID (ID)
         var idBytes = System.Text.Encoding.UTF8.GetBytes(config.Id);
         handshakeData.AddRange(idBytes);
-        
-        // Add additional parameters if needed
+
         if (!string.IsNullOrEmpty(config.Flow))
         {
             var flowBytes = System.Text.Encoding.UTF8.GetBytes(config.Flow);
@@ -116,7 +135,6 @@ public class VlessVpnService : IVlessVpnService
                 var bytesRead = await _networkStream.ReadAsync(buffer, cancellationToken);
                 if (bytesRead == 0)
                 {
-                    // Connection closed by server
                     Disconnect();
                     break;
                 }

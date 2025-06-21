@@ -136,6 +136,7 @@ public class VpnConfigViewModel : ObservableObject
             foreach (var vm in Configs)
             {
                 vm.IsConnected = false;
+                vm.LastError = null;
             }
             
             var success = await _vpnService.Connect(config);
@@ -145,12 +146,18 @@ public class VpnConfigViewModel : ObservableObject
                 if (connectedVm != null)
                 {
                     connectedVm.IsConnected = true;
+                    connectedVm.LastError = null;
+                    StatusMessage = "Connected successfully";
                 }
             }
         }
         catch (Exception ex)
         {
-            StatusMessage = $"Connection failed: {ex.Message}";
+            var failedVm = Configs.FirstOrDefault(c => c.Id == id);
+            if (failedVm != null)
+            {
+                failedVm.LastError = ex.Message;
+            }
         }
         finally
         {
@@ -179,7 +186,10 @@ public class VpnConfigViewModel : ObservableObject
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
-            StatusMessage = status;
+            if (status != "Disconnected" || string.IsNullOrEmpty(StatusMessage))
+            {
+                StatusMessage = status;
+            }
         });
     }
 }
