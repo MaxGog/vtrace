@@ -1,30 +1,32 @@
 using System.Net.Sockets;
-
-using vtrace.Models;
 using vtrace.Interfaces;
-
+using vtrace.Models;
 
 namespace vtrace.Services;
 
-public class VlessVpnService : IVlessVpnService
+public sealed class VlessVpnService : IVlessVpnService, IDisposable
 {
+    private const int ConnectionTimeoutSeconds = 5;
+    private const int ReadBufferSize = 4096;
+    
     private TcpClient? _tcpClient;
     private NetworkStream? _networkStream;
-    private bool _isConnected = false;
-    private CancellationTokenSource? _cancellationTokenSource;
-
+    private CancellationTokenSource? _cts;
+    
     private long _bytesReceived;
     private long _bytesSent;
+    private volatile bool _isConnected;
 
     public long BytesReceived => _bytesReceived;
     public long BytesSent => _bytesSent;
-
     public bool IsConnected => _isConnected;
-
-    public event EventHandler<string> ConnectionStatusChanged;
+    
+    public event EventHandler<string>? ConnectionStatusChanged;
 
     public async Task<bool> Connect(VlessConfig config)
     {
+        if (config == null) throw new ArgumentNullException(nameof(config));
+        
         if (_isConnected)
         {
             Disconnect();
@@ -32,132 +34,160 @@ public class VlessVpnService : IVlessVpnService
 
         try
         {
-            OnConnectionStatusChanged("Connecting...");
+            await EstablishConnectionAsync(config);
+            await PerformHandshakeAsync(config);
             
-            _tcpClient = new TcpClient();
-            _cancellationTokenSource = new CancellationTokenSource();
-
-            var connectTask = _tcpClient.ConnectAsync(config.Address, config.Port);
-            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(5));
-            
-            var completedTask = await Task.WhenAny(connectTask, timeoutTask);
-            if (completedTask == timeoutTask)
-            {
-                throw new TimeoutException("Connection timeout");
-            }
-            
-            if (!_tcpClient.Connected)
-            {
-                throw new Exception("Connection failed without exception");
-            }
-
-            _networkStream = _tcpClient.GetStream();
-
-            await SendVlessHandshake(config);
-            
-            _isConnected = true;
-            OnConnectionStatusChanged("Connected");
-            
-            _ = Task.Run(() => ReadDataAsync(_cancellationTokenSource.Token));
-            
+            StartDataReading();
             return true;
         }
         catch (Exception ex)
         {
-            string errorMessage = ex switch
-            {
-                TimeoutException => "Connection timeout (server not responding)",
-                SocketException sockEx => sockEx.SocketErrorCode switch
-                {
-                    SocketError.ConnectionRefused => "Connection refused (server is down)",
-                    SocketError.HostUnreachable => "Host unreachable (check network)",
-                    SocketError.NetworkUnreachable => "Network unavailable",
-                    _ => $"Network error: {sockEx.SocketErrorCode}"
-                },
-                _ => $"Connection error: {ex.Message}"
-            };
-            
-            OnConnectionStatusChanged(errorMessage);
-            Disconnect();
+            HandleConnectionError(ex);
             return false;
         }
     }
-    
-    private async Task ReadDataAsync(CancellationToken cancellationToken)
+
+    private async Task EstablishConnectionAsync(VlessConfig config)
     {
-        var buffer = new byte[4096];
+        NotifyStatus("Connecting...");
         
-        try
+        _tcpClient = new TcpClient();
+        _cts = new CancellationTokenSource();
+        
+        var connectTask = _tcpClient.ConnectAsync(config.Address, config.Port);
+        var timeoutTask = Task.Delay(TimeSpan.FromSeconds(ConnectionTimeoutSeconds));
+        
+        if (await Task.WhenAny(connectTask, timeoutTask) == timeoutTask)
         {
-            while (!cancellationToken.IsCancellationRequested && _tcpClient.Connected)
-            {
-                var bytesRead = await _networkStream.ReadAsync(buffer, cancellationToken);
-                if (bytesRead == 0)
-                {
-                    Disconnect();
-                    break;
-                }
-                
-                _bytesReceived += bytesRead;
-                
-                // Process received data...
-            }
+            throw new TimeoutException("Connection timeout");
         }
-        catch
+
+        if (!_tcpClient.Connected)
         {
-            Disconnect();
+            throw new InvalidOperationException("Connection failed without exception");
+        }
+
+        _networkStream = _tcpClient.GetStream();
+    }
+
+    private async Task PerformHandshakeAsync(VlessConfig config)
+    {
+        var handshakeData = BuildHandshakeData(config);
+        await _networkStream!.WriteAsync(handshakeData, _cts!.Token);
+        
+        _isConnected = true;
+        NotifyStatus("Connected");
+    }
+
+    private static byte[] BuildHandshakeData(VlessConfig config)
+    {
+        var handshake = new List<byte> { 0x01 }; // Protocol version
+        
+        handshake.AddRange(System.Text.Encoding.UTF8.GetBytes(config.Id));
+        
+        if (!string.IsNullOrEmpty(config.Flow))
+        {
+            handshake.AddRange(System.Text.Encoding.UTF8.GetBytes(config.Flow));
+        }
+        
+        return handshake.ToArray();
+    }
+
+    private void StartDataReading()
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await ReadDataContinuouslyAsync();
+            }
+            catch
+            {
+                Disconnect();
+            }
+        }, _cts!.Token);
+    }
+
+    private async Task ReadDataContinuouslyAsync()
+    {
+        var buffer = new byte[ReadBufferSize];
+        
+        while (!_cts!.IsCancellationRequested && 
+               _tcpClient!.Connected && 
+               _networkStream!.CanRead)
+        {
+            var bytesRead = await _networkStream.ReadAsync(buffer, _cts.Token);
+            if (bytesRead == 0) break;
+            
+            Interlocked.Add(ref _bytesReceived, bytesRead);
+            
+            // Process received data here...
         }
     }
+
+    private void HandleConnectionError(Exception ex)
+    {
+        var errorMessage = ex switch
+        {
+            TimeoutException => "Connection timeout (server not responding)",
+            SocketException sockEx => GetSocketErrorMessage(sockEx),
+            _ => $"Connection error: {ex.Message}"
+        };
+        
+        NotifyStatus(errorMessage);
+        Disconnect();
+    }
+
+    private static string GetSocketErrorMessage(SocketException ex) => ex.SocketErrorCode switch
+    {
+        SocketError.ConnectionRefused => "Connection refused (server is down)",
+        SocketError.HostUnreachable => "Host unreachable (check network)",
+        SocketError.NetworkUnreachable => "Network unavailable",
+        _ => $"Network error: {ex.SocketErrorCode}"
+    };
 
     public void Disconnect()
     {
         try
         {
-            _cancellationTokenSource?.Cancel();
-
-            _networkStream?.Close();
-            _networkStream?.Dispose();
-            _networkStream = null;
-
-            _tcpClient?.Close();
-            _tcpClient?.Dispose();
-            _tcpClient = null;
-
+            if (!_isConnected) return;
+            
+            _cts?.Cancel();
+            
+            CleanupNetworkResources();
+            
             _isConnected = false;
-
-            // Не перезаписываем статус, если уже есть сообщение об ошибке
-            if (!_cancellationTokenSource?.IsCancellationRequested ?? false)
+            
+            if (!(_cts?.IsCancellationRequested ?? true))
             {
-                OnConnectionStatusChanged("Disconnected");
+                NotifyStatus("Disconnected");
             }
         }
         catch
         {
-            // Игонорируем ошибки
+            // Logging can be added here
         }
     }
 
-    private async Task SendVlessHandshake(VlessConfig config)
+    private void CleanupNetworkResources()
     {
-        var handshakeData = new List<byte>
-        {
-            1
-        };
-        
-        var idBytes = System.Text.Encoding.UTF8.GetBytes(config.Id);
-        handshakeData.AddRange(idBytes);
+        _networkStream?.Close();
+        _networkStream?.Dispose();
+        _networkStream = null;
 
-        if (!string.IsNullOrEmpty(config.Flow))
-        {
-            var flowBytes = System.Text.Encoding.UTF8.GetBytes(config.Flow);
-            handshakeData.AddRange(flowBytes);
-        }
-        
-        await _networkStream.WriteAsync(handshakeData.ToArray().AsMemory(0, handshakeData.Count));
+        _tcpClient?.Close();
+        _tcpClient?.Dispose();
+        _tcpClient = null;
     }
 
-    private void OnConnectionStatusChanged(string status)
+    private void NotifyStatus(string status)
     {
         ConnectionStatusChanged?.Invoke(this, status);
+    }
+
+    public void Dispose()
+    {
+        Disconnect();
+        _cts?.Dispose();
     }
 }

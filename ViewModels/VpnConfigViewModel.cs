@@ -13,33 +13,32 @@ public class VpnConfigViewModel : ObservableObject
 {
     private readonly IConfigStorageService _configStorage;
     private readonly IVlessVpnService _vpnService;
-    private string _newConfigUrl;
+    private string _newConfigUrl = string.Empty;
     private bool _isBusy;
-    private string _statusMessage;
-
+    private string _statusMessage = string.Empty;
     private string _connectionSpeed = "0 KB/s ↓ | 0 KB/s ↑";
-    private readonly List<double> _downloadSpeeds = new();
-    private readonly List<double> _uploadSpeeds = new();
+    private bool _isVpnEnabled = true;
+
+    private readonly CircularBuffer<double> _downloadSpeeds = new(60);
+    private readonly CircularBuffer<double> _uploadSpeeds = new(60);
     private DateTime _lastSpeedUpdateTime;
     private long _lastBytesReceived;
     private long _lastBytesSent;
 
-    public ISeries[] SpeedSeries { get; set; }
-    public Axis[] XAxes { get; set; }
-    public Axis[] YAxes { get; set; }
+    public ISeries[] SpeedSeries { get; }
+    public Axis[] XAxes { get; }
+    public Axis[] YAxes { get; }
 
-    private bool _isVpnEnabled = true;
     public bool IsVpnEnabled
     {
         get => _isVpnEnabled;
         set => SetProperty(ref _isVpnEnabled, value);
     }
 
-
     public string ConnectionSpeed
     {
         get => _connectionSpeed;
-        set => SetProperty(ref _connectionSpeed, value);
+        private set => SetProperty(ref _connectionSpeed, value);
     }
 
     public ObservableCollection<VlessConfigViewModel> Configs { get; } = new();
@@ -53,13 +52,13 @@ public class VpnConfigViewModel : ObservableObject
     public bool IsBusy
     {
         get => _isBusy;
-        set => SetProperty(ref _isBusy, value);
+        private set => SetProperty(ref _isBusy, value);
     }
 
     public string StatusMessage
     {
         get => _statusMessage;
-        set => SetProperty(ref _statusMessage, value);
+        private set => SetProperty(ref _statusMessage, value);
     }
 
     public ICommand AddConfigCommand { get; }
@@ -67,23 +66,17 @@ public class VpnConfigViewModel : ObservableObject
     public ICommand ConnectCommand { get; }
     public ICommand DisconnectCommand { get; }
 
-    [Obsolete]
     public VpnConfigViewModel(IConfigStorageService configStorage, IVlessVpnService vpnService)
     {
-        _configStorage = configStorage;
-        _vpnService = vpnService;
+        _configStorage = configStorage ?? throw new ArgumentNullException(nameof(configStorage));
+        _vpnService = vpnService ?? throw new ArgumentNullException(nameof(vpnService));
 
-        AddConfigCommand = new Command(async () => await AddConfig());
-        DeleteConfigCommand = new Command<string>(async (id) => await DeleteConfig(id));
-        ConnectCommand = new Command<string>(async (id) => await ConnectToVpn(id));
-        DisconnectCommand = new Command(() => DisconnectFromVpn());
+        AddConfigCommand = new Command(async () => await AddConfig().ConfigureAwait(false));
+        DeleteConfigCommand = new Command<string>(async (id) => await DeleteConfig(id).ConfigureAwait(false));
+        ConnectCommand = new Command<string>(async (id) => await ConnectToVpn(id).ConfigureAwait(false));
+        DisconnectCommand = new Command(DisconnectFromVpn);
 
         _vpnService.ConnectionStatusChanged += OnConnectionStatusChanged;
-
-        LoadConfigs();
-
-        _configStorage = configStorage;
-        _vpnService = vpnService;
 
         SpeedSeries = new ISeries[]
         {
@@ -105,34 +98,31 @@ public class VpnConfigViewModel : ObservableObject
             }
         };
 
-        XAxes = new[]
-        {
-            new Axis
-            {
-                IsVisible = false,
-                LabelsPaint = new SolidColorPaint(SKColors.Transparent)
-            }
-        };
+        XAxes = new[] { CreateInvisibleAxis() };
+        YAxes = new[] { CreateInvisibleAxis() };
 
-        YAxes = new[]
-        {
-            new Axis
-            {
-                IsVisible = false,
-                LabelsPaint = new SolidColorPaint(SKColors.Transparent)
-            }
-        };
-        
-        Device.StartTimer(TimeSpan.FromSeconds(1), () =>
-        {
-            if (_vpnService.IsConnected)
-            {
-                UpdateSpeed();
-            }
-            return true;
-        });
+        // Загрузка конфигураций
+        _ = LoadConfigsAsync();
+
+        // Таймер для обновления скорости
+        Device.StartTimer(TimeSpan.FromSeconds(1), UpdateSpeedIfConnected);
     }
-    
+
+    private static Axis CreateInvisibleAxis() => new()
+    {
+        IsVisible = false,
+        LabelsPaint = new SolidColorPaint(SKColors.Transparent)
+    };
+
+    private bool UpdateSpeedIfConnected()
+    {
+        if (_vpnService.IsConnected)
+        {
+            UpdateSpeed();
+        }
+        return true;
+    }
+
     private void UpdateSpeed()
     {
         try
@@ -157,37 +147,29 @@ public class VpnConfigViewModel : ObservableObject
             _downloadSpeeds.Add(downloadSpeed / 1024);
             _uploadSpeeds.Add(uploadSpeed / 1024);
 
-            if (_downloadSpeeds.Count > 60)
-            {
-                _downloadSpeeds.RemoveAt(0);
-                _uploadSpeeds.RemoveAt(0);
-            }
-
             OnPropertyChanged(nameof(SpeedSeries));
         }
         catch
         {
-            // Игнорируем ошибки
+            // Логирование ошибок можно добавить здесь
         }
     }
 
-    private string FormatSpeed(double bytesPerSecond)
+    private static string FormatSpeed(double bytesPerSecond)
     {
-        if (bytesPerSecond >= 1024 * 1024)
-        {
-            return $"{(bytesPerSecond / (1024 * 1024)):0.0} MB/s";
-        }
-        return $"{(bytesPerSecond / 1024):0.0} KB/s";
+        return bytesPerSecond >= 1024 * 1024
+            ? $"{(bytesPerSecond / (1024 * 1024)):0.0} MB/s"
+            : $"{(bytesPerSecond / 1024):0.0} KB/s";
     }
 
-    private async void LoadConfigs()
+    private async Task LoadConfigsAsync()
     {
         try
         {
             IsBusy = true;
             Configs.Clear();
 
-            var configs = await _configStorage.GetAllConfigsAsync();
+            var configs = await _configStorage.GetAllConfigsAsync().ConfigureAwait(false);
             foreach (var config in configs)
             {
                 Configs.Add(new VlessConfigViewModel(config));
@@ -215,7 +197,7 @@ public class VpnConfigViewModel : ObservableObject
         {
             IsBusy = true;
             var config = VlessConfig.Parse(NewConfigUrl);
-            await _configStorage.AddConfigAsync(config);
+            await _configStorage.AddConfigAsync(config).ConfigureAwait(false);
             Configs.Add(new VlessConfigViewModel(config));
             NewConfigUrl = string.Empty;
             StatusMessage = "Configuration added successfully";
@@ -232,16 +214,19 @@ public class VpnConfigViewModel : ObservableObject
 
     private async Task DeleteConfig(string id)
     {
+        if (string.IsNullOrEmpty(id)) return;
+
         try
         {
             IsBusy = true;
-            await _configStorage.RemoveConfigAsync(id);
+            await _configStorage.RemoveConfigAsync(id).ConfigureAwait(false);
+            
             var item = Configs.FirstOrDefault(c => c.Id == id);
             if (item != null)
             {
                 Configs.Remove(item);
+                StatusMessage = "Configuration removed successfully";
             }
-            StatusMessage = "Configuration removed successfully";
         }
         catch (Exception ex)
         {
@@ -255,18 +240,16 @@ public class VpnConfigViewModel : ObservableObject
 
     private async Task ConnectToVpn(string id)
     {
+        if (string.IsNullOrEmpty(id)) return;
+
         try
         {
             IsBusy = true;
-            var config = await _configStorage.GetConfigAsync(id);
+            var config = await _configStorage.GetConfigAsync(id).ConfigureAwait(false);
             
-            foreach (var vm in Configs)
-            {
-                vm.IsConnected = false;
-                vm.LastError = null;
-            }
+            ResetAllConnectionStatuses();
             
-            var success = await _vpnService.Connect(config);
+            var success = await _vpnService.Connect(config).ConfigureAwait(false);
             if (success)
             {
                 var connectedVm = Configs.FirstOrDefault(c => c.Id == id);
@@ -280,15 +263,29 @@ public class VpnConfigViewModel : ObservableObject
         }
         catch (Exception ex)
         {
-            var failedVm = Configs.FirstOrDefault(c => c.Id == id);
-            if (failedVm != null)
-            {
-                failedVm.LastError = ex.Message;
-            }
+            UpdateFailedConnectionStatus(id, ex.Message);
         }
         finally
         {
             IsBusy = false;
+        }
+    }
+
+    private void ResetAllConnectionStatuses()
+    {
+        foreach (var vm in Configs)
+        {
+            vm.IsConnected = false;
+            vm.LastError = null;
+        }
+    }
+
+    private void UpdateFailedConnectionStatus(string id, string errorMessage)
+    {
+        var failedVm = Configs.FirstOrDefault(c => c.Id == id);
+        if (failedVm != null)
+        {
+            failedVm.LastError = errorMessage;
         }
     }
 
@@ -297,10 +294,7 @@ public class VpnConfigViewModel : ObservableObject
         try
         {
             _vpnService.Disconnect();
-            foreach (var vm in Configs)
-            {
-                vm.IsConnected = false;
-            }
+            ResetAllConnectionStatuses();
             StatusMessage = "Disconnected";
         }
         catch (Exception ex)
@@ -318,5 +312,24 @@ public class VpnConfigViewModel : ObservableObject
                 StatusMessage = status;
             }
         });
+    }
+}
+
+public class CircularBuffer<T> : List<T>
+{
+    private readonly int _capacity;
+
+    public CircularBuffer(int capacity)
+    {
+        _capacity = capacity;
+    }
+
+    public new void Add(T item)
+    {
+        if (Count >= _capacity)
+        {
+            RemoveAt(0);
+        }
+        base.Add(item);
     }
 }
