@@ -13,6 +13,12 @@ public class VlessVpnService : IVlessVpnService
     private bool _isConnected = false;
     private CancellationTokenSource? _cancellationTokenSource;
 
+    private long _bytesReceived;
+    private long _bytesSent;
+
+    public long BytesReceived => _bytesReceived;
+    public long BytesSent => _bytesSent;
+
     public bool IsConnected => _isConnected;
 
     public event EventHandler<string> ConnectionStatusChanged;
@@ -76,23 +82,49 @@ public class VlessVpnService : IVlessVpnService
             return false;
         }
     }
+    
+    private async Task ReadDataAsync(CancellationToken cancellationToken)
+    {
+        var buffer = new byte[4096];
+        
+        try
+        {
+            while (!cancellationToken.IsCancellationRequested && _tcpClient.Connected)
+            {
+                var bytesRead = await _networkStream.ReadAsync(buffer, cancellationToken);
+                if (bytesRead == 0)
+                {
+                    Disconnect();
+                    break;
+                }
+                
+                _bytesReceived += bytesRead;
+                
+                // Process received data...
+            }
+        }
+        catch
+        {
+            Disconnect();
+        }
+    }
 
     public void Disconnect()
     {
         try
         {
             _cancellationTokenSource?.Cancel();
-            
+
             _networkStream?.Close();
             _networkStream?.Dispose();
             _networkStream = null;
-            
+
             _tcpClient?.Close();
             _tcpClient?.Dispose();
             _tcpClient = null;
-            
+
             _isConnected = false;
-            
+
             // Не перезаписываем статус, если уже есть сообщение об ошибке
             if (!_cancellationTokenSource?.IsCancellationRequested ?? false)
             {
@@ -122,32 +154,6 @@ public class VlessVpnService : IVlessVpnService
         }
         
         await _networkStream.WriteAsync(handshakeData.ToArray().AsMemory(0, handshakeData.Count));
-    }
-
-    private async Task ReadDataAsync(CancellationToken cancellationToken)
-    {
-        var buffer = new byte[4096];
-        
-        try
-        {
-            while (!cancellationToken.IsCancellationRequested && _tcpClient.Connected)
-            {
-                var bytesRead = await _networkStream.ReadAsync(buffer, cancellationToken);
-                if (bytesRead == 0)
-                {
-                    Disconnect();
-                    break;
-                }
-                
-                // Process received data here
-                // In a real implementation, you would handle the VPN packets
-            }
-        }
-        catch (Exception ex)
-        {
-            OnConnectionStatusChanged($"Read error: {ex.Message}");
-            Disconnect();
-        }
     }
 
     private void OnConnectionStatusChanged(string status)

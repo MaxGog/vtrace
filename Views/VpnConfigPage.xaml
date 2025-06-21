@@ -1,11 +1,32 @@
 ﻿<?xml version="1.0" encoding="utf-8" ?>
 <ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
              xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="vtrace.Views.VpnConfigPage">
+             x:Class="vtrace.Views.VpnConfigPage"
+             xmlns:lvc="clr-namespace:LiveChartsCore.SkiaSharpView.Maui;assembly=LiveChartsCore.SkiaSharpView.Maui">
 
     <ScrollView>
         <VerticalStackLayout Spacing="20" Padding="20">
             
+            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}"/>
+
+            <Frame IsVisible="{Binding IsConnected}">
+                <Grid ColumnDefinitions="*,*" RowDefinitions="Auto,Auto" RowSpacing="10">
+                    <Label Grid.Column="0" Grid.Row="0" Text="Status:" FontAttributes="Bold"/>
+                    <Label Grid.Column="1" Grid.Row="0" Text="Connected" TextColor="Green"/>
+                    
+                    <Label Grid.Column="0" Grid.Row="1" Text="Speed:" FontAttributes="Bold"/>
+                    <Label Grid.Column="1" Grid.Row="1" Text="{Binding ConnectionSpeed}"/>
+                </Grid>
+            </Frame>
+
+            <Frame IsVisible="{Binding IsConnected}" HeightRequest="150">
+                <lvc:CartesianChart
+                    Series="{Binding SpeedSeries}"
+                    XAxes="{Binding XAxes}"
+                    YAxes="{Binding YAxes}"
+                    LegendPosition="Hidden"/>
+            </Frame>
+
             <Frame>
                 <VerticalStackLayout Spacing="10">
                     <Label Text="Add New Configuration" FontSize="Medium" FontAttributes="Bold"/>
@@ -18,12 +39,9 @@
 
             <Label Text="{Binding StatusMessage}" 
                    FontSize="Small"
-                   TextColor="{AppThemeBinding Light={StaticResource Gray600}, 
-                                              Dark={StaticResource Gray300}}"/>
+                   TextColor="{AppThemeBinding Light={StaticResource Gray600}, Dark={StaticResource Gray300}}"/>
             
             <Label Text="Saved Configurations" FontSize="Medium" FontAttributes="Bold"/>
-            
-            <ActivityIndicator IsRunning="{Binding IsBusy}" IsVisible="{Binding IsBusy}"/>
             
             <RefreshView IsRefreshing="{Binding IsBusy}"
                          Command="{Binding LoadConfigsCommand}">
@@ -43,7 +61,6 @@
                                         Text="{Binding Address}"
                                         FontSize="Small"/>
                                     
-                                    <!-- Добавляем Label для отображения ошибки -->
                                     <Label Grid.Column="0" Grid.Row="2"
                                         Text="{Binding LastError}"
                                         FontSize="Small"
@@ -73,9 +90,9 @@
             </RefreshView>
 
             <Button Text="Disconnect" 
-                    Command="{Binding DisconnectCommand}"
-                    IsVisible="{Binding Configs, Converter={StaticResource AnyItemConnectedConverter}}"
-                    HorizontalOptions="Center"/>
+                Command="{Binding DisconnectCommand}"
+                IsVisible="{Binding Configs, Converter={StaticResource AnyItemConnectedConverter}}"
+                HorizontalOptions="Center"/>
             
         </VerticalStackLayout>
     </ScrollView>         

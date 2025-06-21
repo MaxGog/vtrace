@@ -1,5 +1,9 @@
 using System.Collections.ObjectModel;
 using System.Windows.Input;
+using LiveChartsCore;
+using LiveChartsCore.SkiaSharpView;
+using LiveChartsCore.SkiaSharpView.Painting;
+using SkiaSharp;
 using vtrace.Interfaces;
 using vtrace.Models;
 
@@ -12,6 +16,31 @@ public class VpnConfigViewModel : ObservableObject
     private string _newConfigUrl;
     private bool _isBusy;
     private string _statusMessage;
+
+    private string _connectionSpeed = "0 KB/s ↓ | 0 KB/s ↑";
+    private readonly List<double> _downloadSpeeds = new();
+    private readonly List<double> _uploadSpeeds = new();
+    private DateTime _lastSpeedUpdateTime;
+    private long _lastBytesReceived;
+    private long _lastBytesSent;
+
+    public ISeries[] SpeedSeries { get; set; }
+    public Axis[] XAxes { get; set; }
+    public Axis[] YAxes { get; set; }
+
+    private bool _isVpnEnabled = true;
+    public bool IsVpnEnabled
+    {
+        get => _isVpnEnabled;
+        set => SetProperty(ref _isVpnEnabled, value);
+    }
+
+
+    public string ConnectionSpeed
+    {
+        get => _connectionSpeed;
+        set => SetProperty(ref _connectionSpeed, value);
+    }
 
     public ObservableCollection<VlessConfigViewModel> Configs { get; } = new();
 
@@ -38,19 +67,117 @@ public class VpnConfigViewModel : ObservableObject
     public ICommand ConnectCommand { get; }
     public ICommand DisconnectCommand { get; }
 
+    [Obsolete]
     public VpnConfigViewModel(IConfigStorageService configStorage, IVlessVpnService vpnService)
     {
         _configStorage = configStorage;
         _vpnService = vpnService;
-        
+
         AddConfigCommand = new Command(async () => await AddConfig());
         DeleteConfigCommand = new Command<string>(async (id) => await DeleteConfig(id));
         ConnectCommand = new Command<string>(async (id) => await ConnectToVpn(id));
         DisconnectCommand = new Command(() => DisconnectFromVpn());
 
         _vpnService.ConnectionStatusChanged += OnConnectionStatusChanged;
-        
+
         LoadConfigs();
+
+        _configStorage = configStorage;
+        _vpnService = vpnService;
+
+        SpeedSeries = new ISeries[]
+        {
+            new LineSeries<double>
+            {
+                Name = "Download",
+                Values = _downloadSpeeds,
+                Stroke = new SolidColorPaint(SKColors.CornflowerBlue) { StrokeThickness = 2 },
+                Fill = null,
+                GeometrySize = 0
+            },
+            new LineSeries<double>
+            {
+                Name = "Upload",
+                Values = _uploadSpeeds,
+                Stroke = new SolidColorPaint(SKColors.OrangeRed) { StrokeThickness = 2 },
+                Fill = null,
+                GeometrySize = 0
+            }
+        };
+
+        XAxes = new[]
+        {
+            new Axis
+            {
+                IsVisible = false,
+                LabelsPaint = new SolidColorPaint(SKColors.Transparent)
+            }
+        };
+
+        YAxes = new[]
+        {
+            new Axis
+            {
+                IsVisible = false,
+                LabelsPaint = new SolidColorPaint(SKColors.Transparent)
+            }
+        };
+        
+        Device.StartTimer(TimeSpan.FromSeconds(1), () =>
+        {
+            if (_vpnService.IsConnected)
+            {
+                UpdateSpeed();
+            }
+            return true;
+        });
+    }
+    
+    private void UpdateSpeed()
+    {
+        try
+        {
+            var now = DateTime.Now;
+            var timeElapsed = (now - _lastSpeedUpdateTime).TotalSeconds;
+            
+            if (timeElapsed <= 0) return;
+
+            var bytesReceived = _vpnService.BytesReceived;
+            var bytesSent = _vpnService.BytesSent;
+
+            var downloadSpeed = (bytesReceived - _lastBytesReceived) / timeElapsed;
+            var uploadSpeed = (bytesSent - _lastBytesSent) / timeElapsed;
+
+            _lastBytesReceived = bytesReceived;
+            _lastBytesSent = bytesSent;
+            _lastSpeedUpdateTime = now;
+
+            ConnectionSpeed = $"{FormatSpeed(downloadSpeed)} ↓ | {FormatSpeed(uploadSpeed)} ↑";
+
+            _downloadSpeeds.Add(downloadSpeed / 1024);
+            _uploadSpeeds.Add(uploadSpeed / 1024);
+
+            if (_downloadSpeeds.Count > 60)
+            {
+                _downloadSpeeds.RemoveAt(0);
+                _uploadSpeeds.RemoveAt(0);
+            }
+
+            OnPropertyChanged(nameof(SpeedSeries));
+        }
+        catch
+        {
+            // Игнорируем ошибки
+        }
+    }
+
+    private string FormatSpeed(double bytesPerSecond)
+    {
+        if (bytesPerSecond >= 1024 * 1024)
+        {
+            return $"{(bytesPerSecond / (1024 * 1024)):0.0} MB/s";
+        }
+        return $"{(bytesPerSecond / 1024):0.0} KB/s";
     }
 
     private async void LoadConfigs()
@@ -59,7 +186,7 @@ public class VpnConfigViewModel : ObservableObject
         {
             IsBusy = true;
             Configs.Clear();
-            
+
             var configs = await _configStorage.GetAllConfigsAsync();
             foreach (var config in configs)
             {
