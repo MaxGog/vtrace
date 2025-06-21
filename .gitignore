@@ -1,0 +1,109 @@
+## .NET MAUI/.NET Core ##
+**/[Bb]in/
+**/[Oo]bj/
+**/.vs/
+**/.vscode/
+**/*.user
+**/*.suo
+**/*.userprefs
+**/*.nupkg
+**/packages/
+**/TestResults/
+**/artifacts/
+**/AppPackages/
+**/BundleArtifacts/
+**/.localhistory/
+**/.msbuild/
+**/.idea/
+**/.dotnet/
+**/.ionide/
+
+# Build results
+[Dd]ebug/
+[Dd]ebugPublic/
+[Rr]elease/
+[Rr]eleases/
+x64/
+x86/
+[Aa][Rr][Mm]/
+[Aa][Rr][Mm]64/
+bld/
+[Bb]in/
+[Oo]bj/
+[Ll]og/
+[Ll]ogs/
+
+# NuGet Packages
+*.nupkg
+.nuget/
+**/packages/*
+!**/packages/repositories.config
+
+# MAUI specific
+**/Resources/Raw/**/*.xml
+**/Platforms/**/bin/
+**/Platforms/**/obj/
+**/Platforms/**/Generated/
+
+# IDE specific
+.vs/
+.idea/
+*.swp
+*.swo
+*.sublime-workspace
+*.sublime-project
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# User-specific files
+*.user
+*.userosscache
+*.sln.docstates
+
+# Build results
+*.DotSettings
+*.pidb
+*.log
+*.pdb
+*.ilk
+*.meta
+*.dll
+*.exe
+*.cache
+*.app
+*.ipa
+*.apk
+*.aab
+*.dSYM
+
+# Visual Studio Code
+.vscode/*
+!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+*.code-workspace
+
+# Rider
+.idea/
+*.sln.iml
+
+# Local History for Visual Studio
+.localhistory/
+
+# Windows Installer files
+*.cab
+*.msi
+*.msix
+*.msm
+*.msp
+
+# macOS
+.DS_Store
