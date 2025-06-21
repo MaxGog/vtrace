@@ -20,17 +20,7 @@ public static class MauiProgram
 				fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
 			});
 
-			builder.Services.AddSingleton<IConfigStorageService, JsonFileConfigStorageService>();
-			builder.Services.AddSingleton<IVlessVpnService, VlessVpnService>();
-			
-			builder.Services.AddTransient<VpnConfigViewModel>();
-			
-			builder.Services.AddTransient<VpnConfigPage>();
-			
-			builder.Services.AddSingleton<IValueConverter, BoolToConnectTextConverter>();
-			builder.Services.AddSingleton<IValueConverter, BoolToColorConverter>();
-			builder.Services.AddSingleton<IValueConverter, AnyItemConnectedConverter>();
-			builder.Services.AddSingleton<IValueConverter, InverseBooleanConverter>();
+		ConfigureServices(builder.Services);
 
 #if DEBUG
 		builder.Logging.AddDebug();
@@ -38,4 +28,29 @@ public static class MauiProgram
 
 		return builder.Build();
 	}
+
+	private static void ConfigureServices(IServiceCollection services)
+	{
+		var configFilePath = Path.Combine(FileSystem.AppDataDirectory, "vless_configs.json");
+
+		services.AddSingleton<IConfigStorageService>(_ =>
+			new JsonFileConfigStorageService(configFilePath));
+
+		services.AddSingleton<IVlessVpnService, VlessVpnService>();
+
+		services.AddTransient<VpnConfigViewModel>();
+
+		services.AddTransient<VpnConfigPage>();
+
+		services.AddSingleton<BoolToConnectTextConverter>();
+		services.AddSingleton<BoolToColorConverter>();
+		services.AddSingleton<AnyItemConnectedConverter>();
+		services.AddSingleton<InverseBooleanConverter>();
+
+		services.AddSingleton<IValueConverter, BoolToConnectTextConverter>();
+		services.AddSingleton<IValueConverter, BoolToColorConverter>();
+		services.AddSingleton<IValueConverter, AnyItemConnectedConverter>();
+		services.AddSingleton<IValueConverter, InverseBooleanConverter>();
+	}
+
 }
