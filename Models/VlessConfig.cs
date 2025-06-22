@@ -17,31 +17,63 @@ public class VlessConfig
     public string Spx { get; set; }
     public string Flow { get; set; }
     public string Remark { get; set; }
+    public bool EnableChunkStreaming { get; set; } = false;
 
     public static VlessConfig Parse(string vlessUrl)
     {
-        if (!vlessUrl.StartsWith("vless://"))
-            throw new ArgumentException("Invalid VLESS URL");
+        if (string.IsNullOrWhiteSpace(vlessUrl))
+            throw new ArgumentException("URL cannot be empty");
 
-        var uri = new Uri(vlessUrl);
-        var config = new VlessConfig
+        if (!vlessUrl.StartsWith("vless://", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Invalid VLESS URL - must start with 'vless://'");
+
+        try
         {
-            Id = uri.UserInfo.Split('@')[0],
-            Address = uri.Host,
-            Port = uri.Port,
-            Remark = uri.Fragment.TrimStart('#')
-        };
+            var fragmentIndex = vlessUrl.IndexOf('#');
+            var fragment = fragmentIndex >= 0 ? vlessUrl.Substring(fragmentIndex + 1) : string.Empty;
+            var urlWithoutFragment = fragmentIndex >= 0 ? vlessUrl.Substring(0, fragmentIndex) : vlessUrl;
 
-        var query = HttpUtility.ParseQueryString(uri.Query);
-        config.Type = query["type"];
-        config.Security = query["security"];
-        config.PublicKey = query["pbk"];
-        config.Fingerprint = query["fp"];
-        config.Sni = query["sni"];
-        config.Sid = query["sid"];
-        config.Spx = query["spx"];
-        config.Flow = query["flow"];
+            var uri = new Uri(urlWithoutFragment);
 
-        return config;
+            var config = new VlessConfig
+            {
+                Id = !string.IsNullOrEmpty(uri.UserInfo) ? uri.UserInfo.Split('@')[0] : null,
+                Address = uri.Host,
+                Port = uri.Port > 0 ? uri.Port : 443,
+                Remark = Uri.UnescapeDataString(fragment)
+            };
+
+            if (!string.IsNullOrEmpty(uri.UserInfo) && uri.UserInfo.Contains('@'))
+            {
+                var userParts = uri.UserInfo.Split('@');
+                if (userParts.Length > 1 && !string.IsNullOrEmpty(userParts[1]))
+                {
+                    config.Address = userParts[1];
+                }
+            }
+
+            var query = HttpUtility.ParseQueryString(uri.Query);
+
+            config.Type = query["type"]?.ToLower() ?? "tcp";
+            config.Security = query["security"]?.ToLower() ?? (config.Port == 443 ? "tls" : "none");
+            config.PublicKey = query["pbk"] ?? query["publicKey"];
+            config.Fingerprint = query["fp"] ?? query["fingerprint"] ?? "chrome";
+            config.Sni = query["sni"] ?? query["serverName"];
+            config.Sid = query["sid"] ?? query["shortId"];
+            config.Spx = query["spx"] ?? query["spiderX"];
+            config.Flow = query["flow"];
+
+            if (string.IsNullOrEmpty(config.Address))
+                throw new ArgumentException("Address is required");
+
+            if (config.Security == "reality" && string.IsNullOrEmpty(config.PublicKey))
+                throw new ArgumentException("Public key (pbk) is required for reality security");
+
+            return config;
+        }
+        catch (UriFormatException ex)
+        {
+            throw new ArgumentException("Invalid VLESS URL format", ex);
+        }
     }
 }

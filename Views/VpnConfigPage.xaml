@@ -8,12 +8,12 @@
              Background="{AppThemeBinding Light={StaticResource LightBackground}, Dark={StaticResource DarkBackground}}">
 
     <ScrollView>
-        <VerticalStackLayout Spacing="16" Padding="20">
-            <ActivityIndicator IsRunning="{Binding IsBusy}" 
+       <VerticalStackLayout Spacing="16" Padding="20">
+              <ActivityIndicator IsRunning="{Binding IsBusy}" 
                              IsVisible="{Binding IsBusy}"
                              Color="{AppThemeBinding Light={StaticResource PrimaryLight}, Dark={StaticResource PrimaryDark}}"/>
 
-            <controls:FluentCard IsVisible="{Binding IsConnected}" 
+              <controls:FluentCard IsVisible="{Binding IsConnected}" 
                                 CornerRadius="8"
                                 Padding="16">
                 <Grid ColumnDefinitions="*,*" 
@@ -36,9 +36,9 @@
                            Text="{Binding ConnectionSpeed}" 
                            FontSize="Medium"/>
                 </Grid>
-            </controls:FluentCard>
+              </controls:FluentCard>
 
-            <controls:FluentCard IsVisible="{Binding IsConnected}" 
+              <controls:FluentCard IsVisible="{Binding IsConnected}" 
                                 HeightRequest="180"
                                 CornerRadius="8">
                 <lvc:CartesianChart
@@ -46,44 +46,77 @@
                     XAxes="{Binding XAxes}"
                     YAxes="{Binding YAxes}"
                     LegendPosition="Hidden"/>
-            </controls:FluentCard>
+              </controls:FluentCard>
 
-            <controls:FluentCard CornerRadius="8">
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Add New Configuration" 
-                           FontSize="18"
-                           FontAttributes="Bold"
-                           TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"/>
-                    
-                    <Entry Placeholder="Enter VLESS URL" 
-                           Text="{Binding NewConfigUrl}"
-                           PlaceholderColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray400}}"
-                           BackgroundColor="Transparent"
-                           TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"/>
-                    
-                    <Button Text="Add Configuration" 
-                            Command="{Binding AddConfigCommand}"
-                            CornerRadius="4"
-                            HeightRequest="44"
-                            FontSize="14"
-                            IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
-                            BackgroundColor="{AppThemeBinding Light={StaticResource PrimaryLight}, Dark={StaticResource PrimaryDark}}"
-                            TextColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray100}}"/>
-                </VerticalStackLayout>
-            </controls:FluentCard>
+              <controls:FluentCard IsVisible="{Binding ActiveConnection, Converter={StaticResource NullToBoolConverter}}" 
+                            CornerRadius="8"
+                            Padding="16">
+              <Grid ColumnDefinitions="*,*" 
+                     RowDefinitions="Auto,Auto,Auto" 
+                     RowSpacing="8">
+                     <Label Grid.Column="0" Grid.Row="0" 
+                            Text="Status:" 
+                            FontSize="Medium"
+                            TextColor="{AppThemeBinding Light={StaticResource Gray700}, Dark={StaticResource Gray200}}"/>
+                     <Label Grid.Column="1" Grid.Row="0" 
+                            Text="Connected" 
+                            FontSize="Medium"
+                            TextColor="{StaticResource Success}"/>
+                     
+                     <Label Grid.Column="0" Grid.Row="1" 
+                            Text="Server:" 
+                            FontSize="Medium"
+                            TextColor="{AppThemeBinding Light={StaticResource Gray700}, Dark={StaticResource Gray200}}"/>
+                     <Label Grid.Column="1" Grid.Row="1" 
+                            Text="{Binding ActiveConnection.Remark}" 
+                            FontSize="Medium"/>
+                     
+                     <Label Grid.Column="0" Grid.Row="2" 
+                            Text="Speed:" 
+                            FontSize="Medium"
+                            TextColor="{AppThemeBinding Light={StaticResource Gray700}, Dark={StaticResource Gray200}}"/>
+                     <Label Grid.Column="1" Grid.Row="2" 
+                            Text="{Binding ConnectionSpeed}" 
+                            FontSize="Medium"/>
+              </Grid>
+              </controls:FluentCard>
 
-            <Label Text="{Binding StatusMessage}" 
+              <controls:FluentCard CornerRadius="8">
+                     <VerticalStackLayout Spacing="12">
+                            <Label Text="Add New Configuration" 
+                                   FontSize="18"
+                                   FontAttributes="Bold"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"/>
+                    
+                            <Entry Placeholder="Enter VLESS URL" 
+                                   Text="{Binding NewConfigUrl}"
+                                   PlaceholderColor="{AppThemeBinding Light={StaticResource Gray500}, Dark={StaticResource Gray400}}"
+                                   BackgroundColor="Transparent"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"/>
+                    
+                            <Button Text="Add Configuration" 
+                                   Command="{Binding AddConfigCommand}"
+                                   CornerRadius="4"
+                                   HeightRequest="44"
+                                   FontSize="14"
+                                   IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
+                                   BackgroundColor="{AppThemeBinding Light={StaticResource PrimaryLight}, Dark={StaticResource PrimaryDark}}"
+                                   TextColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray100}}"/>
+                     </VerticalStackLayout>
+              </controls:FluentCard>
+
+              <Label Text="{Binding StatusMessage}" 
                    FontSize="14"
                    Margin="0,-8,0,0"
                    TextColor="{AppThemeBinding Light={StaticResource Gray600}, Dark={StaticResource Gray300}}"/>
             
-            <Label Text="Saved Configurations" 
+              <Label Text="Saved Configurations" 
                    FontSize="18"
                    FontAttributes="Bold"
                    Margin="0,8"
                    TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"/>
             
-            <RefreshView IsRefreshing="{Binding IsBusy}"
+              <RefreshView IsRefreshing="{Binding IsBusy}"
                          Command="{Binding LoadConfigsCommand}">
                 <CollectionView ItemsSource="{Binding Configs}"
                                SelectionMode="None">

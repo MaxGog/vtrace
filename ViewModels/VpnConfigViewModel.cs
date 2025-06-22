@@ -13,6 +13,7 @@ public class VpnConfigViewModel : ObservableObject
 {
     private readonly IConfigStorageService _configStorage;
     private readonly IVlessVpnService _vpnService;
+    private VlessConfigViewModel? _activeConnection;
     private string _newConfigUrl = string.Empty;
     private bool _isBusy;
     private string _statusMessage = string.Empty;
@@ -43,6 +44,12 @@ public class VpnConfigViewModel : ObservableObject
 
     public ObservableCollection<VlessConfigViewModel> Configs { get; } = new();
 
+    public VlessConfigViewModel? ActiveConnection
+    {
+        get => _activeConnection;
+        set => SetProperty(ref _activeConnection, value);
+    }
+
     public string NewConfigUrl
     {
         get => _newConfigUrl;
@@ -66,6 +73,7 @@ public class VpnConfigViewModel : ObservableObject
     public ICommand ConnectCommand { get; }
     public ICommand DisconnectCommand { get; }
 
+    [Obsolete]
     public VpnConfigViewModel(IConfigStorageService configStorage, IVlessVpnService vpnService)
     {
         _configStorage = configStorage ?? throw new ArgumentNullException(nameof(configStorage));
@@ -101,10 +109,8 @@ public class VpnConfigViewModel : ObservableObject
         XAxes = new[] { CreateInvisibleAxis() };
         YAxes = new[] { CreateInvisibleAxis() };
 
-        // Загрузка конфигураций
         _ = LoadConfigsAsync();
 
-        // Таймер для обновления скорости
         Device.StartTimer(TimeSpan.FromSeconds(1), UpdateSpeedIfConnected);
     }
 
@@ -257,7 +263,15 @@ public class VpnConfigViewModel : ObservableObject
                 {
                     connectedVm.IsConnected = true;
                     connectedVm.LastError = null;
+                    ActiveConnection = connectedVm;
                     StatusMessage = "Connected successfully";
+                    
+                    // Сбрасываем статистику скорости
+                    _downloadSpeeds.Clear();
+                    _uploadSpeeds.Clear();
+                    _lastBytesReceived = 0;
+                    _lastBytesSent = 0;
+                    _lastSpeedUpdateTime = DateTime.Now;
                 }
             }
         }
@@ -295,6 +309,7 @@ public class VpnConfigViewModel : ObservableObject
         {
             _vpnService.Disconnect();
             ResetAllConnectionStatuses();
+            ActiveConnection = null;
             StatusMessage = "Disconnected";
         }
         catch (Exception ex)
