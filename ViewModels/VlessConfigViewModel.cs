@@ -13,6 +13,10 @@ public class VlessConfigViewModel(VlessConfig config) : ObservableObject
     public int Port => _config.Port;
     public string Remark => _config.Remark ?? $"{_config.Address}:{_config.Port}";
 
+    public string Type => _config.Type;
+    public string Security => _config.Security;
+    public string Flow => _config.Flow;
+
     public bool IsConnected
     {
         get => _isConnected;
@@ -25,11 +29,4 @@ public class VlessConfigViewModel(VlessConfig config) : ObservableObject
         set => SetProperty(ref _lastError, value);
     }
     
-    private string _security = config.Security;
-
-    public string Security
-    {
-        get => _security;
-        set => SetProperty(ref _security, value);
-    }
 }

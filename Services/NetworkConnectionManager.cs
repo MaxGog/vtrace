@@ -1,209 +1,131 @@
 using System.Net.Security;
-using System.Net.Sockets;
 using System.Security.Authentication;
 using System.Security.Cryptography.X509Certificates;
 using vtrace.Models;
 
 namespace vtrace.Services;
 
-internal class NetworkConnectionManager : IDisposable
+internal class SecurityLayerHandler
 {
-    private const int CONNECTION_TIMEOUT_MS = 10000;
-    private const int KEEPALIVE_INTERVAL_MS = 30000;
-    
-    private TcpClient? _tcpClient;
-    private Stream? _networkStream;
-    private CancellationTokenSource? _cts;
-    
-    private long _bytesReceived;
-    private long _bytesSent;
-    private volatile bool _isConnected;
-    private DateTime _lastActivityTime;
-    
-    private Task? _connectionMonitorTask;
-    private Task? _keepAliveTask;
-    
-    public long BytesReceived => _bytesReceived;
-    public long BytesSent => _bytesSent;
-    public bool IsConnected => _isConnected;
-    public TimeSpan Uptime => _isConnected ? DateTime.UtcNow - _lastActivityTime : TimeSpan.Zero;
-    
-    public event EventHandler<string>? ConnectionStatusChanged;
-    public event EventHandler<long>? DataTransferred;
-
-    public async Task EstablishConnection(VlessConfig config)
-    {
-        if (_isConnected) Disconnect();
-        
-        _cts = new CancellationTokenSource();
-        _lastActivityTime = DateTime.UtcNow;
-
-        try
-        {
-            NotifyStatus("Connecting...");
-            await EstablishTcpConnection(config);
-            await EstablishSecurityLayer(config);
-            StartMonitoringTasks();
-            _isConnected = true;
-            NotifyStatus("Connected successfully");
-        }
-        catch (Exception ex)
-        {
-            NotifyStatus($"Connection failed: {ex.Message}");
-            Disconnect();
-            throw;
-        }
-    }
-
-    private async Task EstablishTcpConnection(VlessConfig config)
-    {
-        _tcpClient = new TcpClient {
-            SendTimeout = CONNECTION_TIMEOUT_MS,
-            ReceiveTimeout = CONNECTION_TIMEOUT_MS
-        };
-        
-        _tcpClient.Client.SetSocketOption(SocketOptionLevel.Socket, SocketOptionName.KeepAlive, true);
-        
-        NotifyStatus($"Connecting to {config.Address}:{config.Port}...");
-        
-        var connectTask = _tcpClient.ConnectAsync(config.Address, config.Port);
-        var timeoutTask = Task.Delay(CONNECTION_TIMEOUT_MS, _cts!.Token);
-        
-        var completedTask = await Task.WhenAny(connectTask, timeoutTask);
-        if (completedTask == timeoutTask)
-            throw new TimeoutException("TCP connection timeout");
-        
-        await connectTask;
-        _networkStream = _tcpClient.GetStream();
-        _lastActivityTime = DateTime.UtcNow;
-        NotifyStatus("TCP connection established");
-    }
-
-    private async Task EstablishSecurityLayer(VlessConfig config)
+    public async Task EstablishSecurityLayer(Stream networkStream, VlessConfig config, 
+        CancellationToken ct, Action<string> statusNotifier)
     {
         if (config.Security == "none")
         {
-            NotifyStatus("Skipping TLS (insecure mode)");
+            statusNotifier("Skipping TLS (insecure mode)");
             return;
         }
 
         if (config.Security == "tls" || config.Security == "reality" || config.Port == 443)
         {
-            NotifyStatus("Establishing TLS layer...");
+            statusNotifier("Establishing TLS layer...");
             
-            var sslOptions = new SslClientAuthenticationOptions
+            var sslOptions = CreateSslOptions(config);
+            
+            if (config.Security == "reality")
+                ConfigureRealityOptions(sslOptions, config, statusNotifier);
+
+            try
             {
-                TargetHost = config.Sni ?? config.Address,
-                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
-                EncryptionPolicy = EncryptionPolicy.RequireEncryption,
-                RemoteCertificateValidationCallback = (sender, cert, chain, errors) => 
-                    CertificateValidator.Validate(cert, errors, config)
-            };
-
-            var sslStream = new SslStream(_networkStream!, false);
-            await sslStream.AuthenticateAsClientAsync(sslOptions, _cts!.Token);
-            
-            _networkStream = sslStream;
-            _lastActivityTime = DateTime.UtcNow;
-            NotifyStatus("TLS handshake completed");
+                var sslStream = new SslStream(networkStream, false);
+                await sslStream.AuthenticateAsClientAsync(sslOptions, ct);
+                
+                statusNotifier(config.Security == "reality" 
+                    ? "Reality handshake completed" 
+                    : "TLS handshake completed");
+            }
+            catch (AuthenticationException ex)
+            {
+                statusNotifier($"Authentication failed: {ex.Message}");
+                throw;
+            }
+            catch (Exception ex)
+            {
+                statusNotifier($"TLS setup error: {ex.Message}");
+                throw;
+            }
         }
     }
 
-    public async Task<int> SendAsync(byte[] buffer, int offset, int count)
+    private SslClientAuthenticationOptions CreateSslOptions(VlessConfig config) => new()
     {
-        if (!_isConnected || _networkStream == null)
-            throw new InvalidOperationException("Not connected");
-        
-        await _networkStream.WriteAsync(buffer, offset, count, _cts!.Token);
-        await _networkStream.FlushAsync(_cts.Token);
-        
-        Interlocked.Add(ref _bytesSent, count);
-        _lastActivityTime = DateTime.UtcNow;
-        DataTransferred?.Invoke(this, count);
-        
-        return count;
-    }
+        TargetHost = config.Sni ?? config.Address,
+        EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+        CertificateRevocationCheckMode = X509RevocationMode.NoCheck,
+        EncryptionPolicy = EncryptionPolicy.RequireEncryption,
+        RemoteCertificateValidationCallback = (sender, cert, chain, errors) => 
+            CertificateValidator.Validate(cert, errors, config)
+    };
 
-    public async Task<int> ReceiveAsync(byte[] buffer, int offset, int count)
+    private void ConfigureRealityOptions(SslClientAuthenticationOptions options, 
+        VlessConfig config, Action<string> statusNotifier)
     {
-        if (!_isConnected || _networkStream == null)
-            throw new InvalidOperationException("Not connected");
+        statusNotifier("Configuring Reality security...");
         
-        var bytesRead = await _networkStream.ReadAsync(buffer, offset, count, _cts!.Token);
-        
-        if (bytesRead > 0)
+        options.CipherSuitesPolicy = new CipherSuitesPolicy(new[]
         {
-            Interlocked.Add(ref _bytesReceived, bytesRead);
-            _lastActivityTime = DateTime.UtcNow;
-            DataTransferred?.Invoke(this, bytesRead);
-        }
-        else
+            TlsCipherSuite.TLS_AES_128_GCM_SHA256,
+            TlsCipherSuite.TLS_CHACHA20_POLY1305_SHA256,
+            TlsCipherSuite.TLS_AES_256_GCM_SHA384
+        });
+
+        options.ApplicationProtocols = new List<SslApplicationProtocol> 
         {
-            Disconnect();
-        }
-        
-        return bytesRead;
+            SslApplicationProtocol.Http2,
+            SslApplicationProtocol.Http11
+        };
+
+        if (!string.IsNullOrEmpty(config.Fingerprint))
+            ApplyFingerprint(options, config.Fingerprint);
+
+        if (!string.IsNullOrEmpty(config.PublicKey))
+            HandlePublicKey(config.PublicKey, statusNotifier);
+
+        if (!string.IsNullOrEmpty(config.ShortId))
+            statusNotifier($"Using Reality short ID: {config.ShortId}");
     }
 
-    public void Disconnect()
+    private void ApplyFingerprint(SslClientAuthenticationOptions options, string fingerprint)
+    {
+        switch (fingerprint.ToLower())
+        {
+            case "chrome":
+                options.EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
+                options.CipherSuitesPolicy = new CipherSuitesPolicy(new[]
+                {
+                    TlsCipherSuite.TLS_AES_128_GCM_SHA256,
+                    TlsCipherSuite.TLS_AES_256_GCM_SHA384,
+                    TlsCipherSuite.TLS_CHACHA20_POLY1305_SHA256,
+                    TlsCipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+                    TlsCipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+                });
+                break;
+                
+            case "firefox":
+                options.EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13;
+                options.CipherSuitesPolicy = new CipherSuitesPolicy(new[]
+                {
+                    TlsCipherSuite.TLS_AES_128_GCM_SHA256,
+                    TlsCipherSuite.TLS_CHACHA20_POLY1305_SHA256,
+                    TlsCipherSuite.TLS_AES_256_GCM_SHA384,
+                    TlsCipherSuite.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
+                    TlsCipherSuite.TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256
+                });
+                break;
+        }
+    }
+
+    private void HandlePublicKey(string publicKey, Action<string> statusNotifier)
     {
         try
         {
-            _cts?.Cancel();
-            _networkStream?.Dispose();
-            _tcpClient?.Dispose();
-            _isConnected = false;
-            NotifyStatus("Disconnected");
+            Convert.FromBase64String(publicKey);
+            statusNotifier($"Using Reality public key: {publicKey[..8]}...");
         }
-        finally
+        catch (FormatException)
         {
-            _networkStream = null;
-            _tcpClient = null;
+            statusNotifier("Invalid Reality public key format");
+            throw;
         }
     }
-
-    private void StartMonitoringTasks()
-    {
-        _connectionMonitorTask = Task.Run(MonitorConnection, _cts!.Token);
-        _keepAliveTask = Task.Run(SendKeepAlives, _cts.Token);
-    }
-
-    private async Task MonitorConnection()
-    {
-        var buffer = new byte[1];
-        while (!_cts!.IsCancellationRequested)
-        {
-            try
-            {
-                if (await _networkStream!.ReadAsync(buffer, 0, 0, _cts.Token) == 0)
-                    break;
-                await Task.Delay(1000, _cts.Token);
-            }
-            catch { break; }
-        }
-        Disconnect();
-    }
-
-    private async Task SendKeepAlives()
-    {
-        while (!_cts!.IsCancellationRequested)
-        {
-            try
-            {
-                await Task.Delay(KEEPALIVE_INTERVAL_MS, _cts.Token);
-                if (_isConnected)
-                {
-                    var pingPacket = new byte[] { 0x00 };
-                    await SendAsync(pingPacket, 0, pingPacket.Length);
-                }
-            }
-            catch { break; }
-        }
-    }
-
-    private void NotifyStatus(string status) 
-        => ConnectionStatusChanged?.Invoke(this, status);
-
-    public void Dispose() => Disconnect();
 }

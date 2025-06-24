@@ -9,17 +9,16 @@ public class VlessConfig
     public string Address { get; set; }
     public int Port { get; set; }
     public string Type { get; set; }
-    public string Security { get; set; } = "tls";
-    public string PublicKey { get; set; }
-    public string Fingerprint { get; set; }
-    public string Sni { get; set; }
-    public string Sid { get; set; }
-    public string Spx { get; set; }
-    public string Flow { get; set; }
-    public string Remark { get; set; }
-    public bool EnableChunkStreaming { get; set; } = false;
+    public string Security { get; set; }
+    public string? PublicKey { get; set; }
+    public string? Fingerprint { get; set; }
+    public string? Sni { get; set; }
+    public string? ShortId { get; set; }
+    public string? SpiderX { get; set; }
+    public string? Flow { get; set; }
+    public string? Remark { get; set; }
 
-    public static VlessConfig Parse(string vlessUrl)
+    /*public static VlessConfig Parse(string vlessUrl)
     {
         if (string.IsNullOrWhiteSpace(vlessUrl))
             throw new ArgumentException("URL cannot be empty");
@@ -75,5 +74,27 @@ public class VlessConfig
         {
             throw new ArgumentException("Invalid VLESS URL format", ex);
         }
+    }*/
+
+    public static VlessConfig Parse(string vlessUrl)
+    {
+        var uri = new Uri(vlessUrl);
+        var query = System.Web.HttpUtility.ParseQueryString(uri.Query);
+
+        return new VlessConfig
+        {
+            Id = uri.UserInfo,
+            Address = uri.Host,
+            Port = uri.Port,
+            Type = query["type"] ?? "tcp",
+            Security = query["security"] ?? "tls",
+            PublicKey = query["pbk"],
+            Fingerprint = query["fp"],
+            Sni = query["sni"],
+            ShortId = query["sid"],
+            SpiderX = query["spx"],
+            Flow = query["flow"],
+            Remark = uri.Fragment.TrimStart('#')
+        };
     }
 }

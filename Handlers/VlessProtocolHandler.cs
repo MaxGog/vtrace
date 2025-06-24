@@ -28,8 +28,8 @@ internal class VlessProtocolHandler
         byte options = 0;
         if (config.Flow == "xtls-rprx-vision")
             options |= VLESS_OPTION_VISION;
-        if (config.EnableChunkStreaming)
-            options |= VLESS_OPTION_CHUNK;
+        //if (config.EnableChunkStreaming)
+            //options |= VLESS_OPTION_CHUNK;
         writer.Write(options);
         
         writer.Write(VLESS_CMD_TCP);

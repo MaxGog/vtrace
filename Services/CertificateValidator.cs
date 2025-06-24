@@ -15,7 +15,6 @@ internal static class CertificateValidator
             return false;
         }
 
-        // For debugging
         Console.WriteLine($"Validating cert for {config.Security}. Errors: {errors}");
         Console.WriteLine($"Cert subject: {cert.Subject}, issuer: {cert.Issuer}");
 
@@ -32,7 +31,6 @@ internal static class CertificateValidator
                 var fingerprint = config.Fingerprint
                     .Replace(":", "").Replace("-", "").Replace(" ", "").ToLowerInvariant();
 
-                // Get the certificate's public key fingerprint
                 using var publicKey = GetPublicKey(cert);
                 using var sha256 = SHA256.Create();
                 var publicKeyBytes = publicKey.ExportSubjectPublicKeyInfo();
@@ -52,7 +50,6 @@ internal static class CertificateValidator
             }
         }
 
-        // For non-REALITY connections, allow name mismatches if that's the only error
         bool isValid = errors == SslPolicyErrors.None || 
                       errors == SslPolicyErrors.RemoteCertificateNameMismatch;
         
@@ -64,13 +61,14 @@ internal static class CertificateValidator
         return isValid;
     }
 
+
     private static RSA GetPublicKey(X509Certificate cert)
     {
         if (cert is X509Certificate2 cert2)
         {
             return cert2.GetRSAPublicKey() ?? throw new Exception("Not an RSA certificate");
         }
-        
+
         using var cert2FromCert = new X509Certificate2(cert);
         return cert2FromCert.GetRSAPublicKey() ?? throw new Exception("Not an RSA certificate");
     }
