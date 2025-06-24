@@ -51,34 +51,40 @@
               <controls:FluentCard IsVisible="{Binding ActiveConnection, Converter={StaticResource NullToBoolConverter}}" 
                             CornerRadius="8"
                             Padding="16">
-              <Grid ColumnDefinitions="*,*" 
-                     RowDefinitions="Auto,Auto,Auto" 
-                     RowSpacing="8">
-                     <Label Grid.Column="0" Grid.Row="0" 
-                            Text="Status:" 
-                            FontSize="Medium"
-                            TextColor="{AppThemeBinding Light={StaticResource Gray700}, Dark={StaticResource Gray200}}"/>
-                     <Label Grid.Column="1" Grid.Row="0" 
-                            Text="Connected" 
-                            FontSize="Medium"
-                            TextColor="{StaticResource Success}"/>
-                     
-                     <Label Grid.Column="0" Grid.Row="1" 
-                            Text="Server:" 
-                            FontSize="Medium"
-                            TextColor="{AppThemeBinding Light={StaticResource Gray700}, Dark={StaticResource Gray200}}"/>
-                     <Label Grid.Column="1" Grid.Row="1" 
-                            Text="{Binding ActiveConnection.Remark}" 
-                            FontSize="Medium"/>
-                     
-                     <Label Grid.Column="0" Grid.Row="2" 
-                            Text="Speed:" 
-                            FontSize="Medium"
-                            TextColor="{AppThemeBinding Light={StaticResource Gray700}, Dark={StaticResource Gray200}}"/>
-                     <Label Grid.Column="1" Grid.Row="2" 
-                            Text="{Binding ConnectionSpeed}" 
-                            FontSize="Medium"/>
-              </Grid>
+              <VerticalStackLayout Spacing="8">
+                     <Grid ColumnDefinitions="*,*" 
+                            RowDefinitions="Auto,Auto,Auto" 
+                            RowSpacing="8">
+                            <Label Grid.Column="0" Grid.Row="0" 
+                                   Text="Status:" 
+                                   FontSize="Medium"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray700}, Dark={StaticResource Gray200}}"/>
+                            <Label Grid.Column="1" Grid.Row="0" 
+                                   Text="Connected" 
+                                   FontSize="Medium"
+                                   TextColor="{StaticResource Success}"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="1" 
+                                   Text="Server:" 
+                                   FontSize="Medium"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray700}, Dark={StaticResource Gray200}}"/>
+                            <Label Grid.Column="1" Grid.Row="1" 
+                                   Text="{Binding ActiveConnection.Remark}" 
+                                   FontSize="Medium"/>
+                            
+                            <Label Grid.Column="0" Grid.Row="2" 
+                                   Text="Speed:" 
+                                   FontSize="Medium"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray700}, Dark={StaticResource Gray200}}"/>
+                            <Label Grid.Column="1" Grid.Row="2" 
+                                   Text="{Binding ConnectionSpeed}" 
+                                   FontSize="Medium"/>
+                     </Grid>
+              </VerticalStackLayout>
+              <Label Text="Warning: Connection is not encrypted!" 
+                     FontSize="14"
+                     TextColor="{StaticResource Warning}"
+                     IsVisible="{Binding ActiveConnection.Security, Converter={StaticResource StringEqualsConverter}, ConverterParameter=none}"/>
               </controls:FluentCard>
 
               <controls:FluentCard CornerRadius="8">
@@ -102,6 +108,30 @@
                                    IsEnabled="{Binding IsBusy, Converter={StaticResource InverseBooleanConverter}}"
                                    BackgroundColor="{AppThemeBinding Light={StaticResource PrimaryLight}, Dark={StaticResource PrimaryDark}}"
                                    TextColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray100}}"/>
+                     </VerticalStackLayout>
+              </controls:FluentCard>
+
+              <controls:FluentCard CornerRadius="8">
+                     <VerticalStackLayout Spacing="12">
+                            <Grid ColumnDefinitions="*,Auto" 
+                                   RowDefinitions="Auto"
+                                   VerticalOptions="Center">
+                            <Label Grid.Column="0"
+                                   Text="Use TLS Encryption"
+                                   FontSize="16"
+                                   VerticalOptions="Center"
+                                   TextColor="{AppThemeBinding Light={StaticResource Gray900}, Dark={StaticResource White}}"/>
+                            
+                            <Switch Grid.Column="1"
+                                   IsToggled="{Binding UseTlsEncryption}"
+                                   OnColor="{AppThemeBinding Light={StaticResource PrimaryLight}, Dark={StaticResource PrimaryDark}}"
+                                   ThumbColor="{AppThemeBinding Light={StaticResource White}, Dark={StaticResource Gray100}}"/>
+                            </Grid>
+                            
+                            <Label Text="Warning: Disabling TLS makes your connection vulnerable!"
+                                   FontSize="12"
+                                   TextColor="{StaticResource Warning}"
+                                   IsVisible="{Binding UseTlsEncryption, Converter={StaticResource InverseBooleanConverter}}"/>
                      </VerticalStackLayout>
               </controls:FluentCard>
 

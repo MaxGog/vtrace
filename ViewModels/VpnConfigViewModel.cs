@@ -19,6 +19,7 @@ public class VpnConfigViewModel : ObservableObject
     private string _statusMessage = string.Empty;
     private string _connectionSpeed = "0 KB/s ↓ | 0 KB/s ↑";
     private bool _isVpnEnabled = true;
+    private bool _useTlsEncryption = true;
 
     private readonly CircularBuffer<double> _downloadSpeeds = new(60);
     private readonly CircularBuffer<double> _uploadSpeeds = new(60);
@@ -36,10 +37,37 @@ public class VpnConfigViewModel : ObservableObject
         set => SetProperty(ref _isVpnEnabled, value);
     }
 
+    public bool UseTlsEncryption
+    {
+        get => _useTlsEncryption;
+        set
+        {
+            if (SetProperty(ref _useTlsEncryption, value))
+            {
+                foreach (var config in Configs)
+                {
+                    config.Security = value ? "tls" : "none";
+                }
+            }
+        }
+    }
+
     public string ConnectionSpeed
     {
         get => _connectionSpeed;
         private set => SetProperty(ref _connectionSpeed, value);
+    }
+
+    public bool IsBusy
+    {
+        get => _isBusy;
+        private set
+        {
+            if (SetProperty(ref _isBusy, value))
+            {
+                OnPropertyChanged(nameof(IsBusy));
+            }
+        }
     }
 
     public ObservableCollection<VlessConfigViewModel> Configs { get; } = new();
@@ -54,12 +82,6 @@ public class VpnConfigViewModel : ObservableObject
     {
         get => _newConfigUrl;
         set => SetProperty(ref _newConfigUrl, value);
-    }
-
-    public bool IsBusy
-    {
-        get => _isBusy;
-        private set => SetProperty(ref _isBusy, value);
     }
 
     public string StatusMessage
@@ -252,6 +274,8 @@ public class VpnConfigViewModel : ObservableObject
         {
             IsBusy = true;
             var config = await _configStorage.GetConfigAsync(id).ConfigureAwait(false);
+
+            config.Security = UseTlsEncryption ? "tls" : "none";
             
             ResetAllConnectionStatuses();
             
@@ -266,7 +290,6 @@ public class VpnConfigViewModel : ObservableObject
                     ActiveConnection = connectedVm;
                     StatusMessage = "Connected successfully";
                     
-                    // Сбрасываем статистику скорости
                     _downloadSpeeds.Clear();
                     _uploadSpeeds.Clear();
                     _lastBytesReceived = 0;

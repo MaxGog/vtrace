@@ -9,7 +9,7 @@ public class VlessConfig
     public string Address { get; set; }
     public int Port { get; set; }
     public string Type { get; set; }
-    public string Security { get; set; }
+    public string Security { get; set; } = "tls";
     public string PublicKey { get; set; }
     public string Fingerprint { get; set; }
     public string Sni { get; set; }

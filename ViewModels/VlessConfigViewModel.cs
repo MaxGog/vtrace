@@ -18,10 +18,18 @@ public class VlessConfigViewModel(VlessConfig config) : ObservableObject
         get => _isConnected;
         set => SetProperty(ref _isConnected, value);
     }
-        
+
     public string LastError
     {
         get => _lastError;
         set => SetProperty(ref _lastError, value);
+    }
+    
+    private string _security = config.Security;
+
+    public string Security
+    {
+        get => _security;
+        set => SetProperty(ref _security, value);
     }
 }

@@ -81,6 +81,12 @@ internal class NetworkConnectionManager : IDisposable
 
     private async Task EstablishSecurityLayer(VlessConfig config)
     {
+        if (config.Security == "none")
+        {
+            NotifyStatus("Skipping TLS (insecure mode)");
+            return;
+        }
+
         if (config.Security == "tls" || config.Security == "reality" || config.Port == 443)
         {
             NotifyStatus("Establishing TLS layer...");
